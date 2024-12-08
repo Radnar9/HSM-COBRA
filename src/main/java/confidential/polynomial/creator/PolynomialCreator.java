@@ -97,6 +97,10 @@ public abstract class PolynomialCreator {
         this.p = new BigInteger(Configuration.getInstance().getPrimeField(), 16);
     }
 
+    public ServerConfidentialityScheme getConfidentialScheme() {
+        return confidentialityScheme;
+    }
+
     private static int[] computeAllUniqueMembers(PolynomialCreationContext creationContext) {
         int totalMembers = 0;
         for (PolynomialContext context : creationContext.getContexts()) {
@@ -147,8 +151,13 @@ public abstract class PolynomialCreator {
     public void sendNewPolynomialCreationRequest() {
         if (iHaveSentNewPolyRequest)
             return;
+
         NewPolynomialMessage newPolynomialMessage = new NewPolynomialMessage(
-                processId, creationContext);
+                processId,
+                creationContext,
+                confidentialityScheme.getConfidentialSchemeId()
+        );
+
         int[] members = getMembers(true);
         logger.debug("Sending NewPolynomialMessage to {} with id {}", Arrays.toString(members),
                 creationContext.getId());
@@ -292,6 +301,7 @@ public abstract class PolynomialCreator {
         ProposalSetMessage proposalSetMessage =  new ProposalSetMessage(
                 creationContext.getId(),
                 processId,
+                confidentialityScheme.getConfidentialSchemeId(),
                 receivedNodes,
                 receivedProposalsHashes
         );
@@ -302,7 +312,6 @@ public abstract class PolynomialCreator {
         serversCommunication.sendOrdered(InterServersMessageType.POLYNOMIAL_PROPOSAL_SET,
 				(byte) Metadata.POLYNOMIAL_PROPOSAL_SET.ordinal(),
                 serialize(proposalSetMessage), members);
-
         proposalSetProposed = true;
     }
 
@@ -405,6 +414,7 @@ public abstract class PolynomialCreator {
             MissingProposalRequestMessage missingProposalRequestMessage = new MissingProposalRequestMessage(
                     creationContext.getId(),
                     processId,
+                    confidentialityScheme.getConfidentialSchemeId(),
                     e.getValue()
             );
             logger.debug("Asking missing proposal to {} with id {}", e.getKey(), creationContext.getId());
@@ -417,6 +427,7 @@ public abstract class PolynomialCreator {
         MissingProposalsMessage missingProposalsMessage = new MissingProposalsMessage(
                 creationContext.getId(),
                 processId,
+                confidentialityScheme.getConfidentialSchemeId(),
                 myProposal
         );
         logger.debug("Sending missing proposals to {} with id {}", message.getSender(), creationContext.getId());
@@ -468,7 +479,7 @@ public abstract class PolynomialCreator {
 
         for (int member : proposalSet.getReceivedNodes()) {
             BigInteger[] points = decryptedPoints.get(member);
-            if (points == null) { //if this replica did not received some proposals
+            if (points == null) { //if this replica did not receive some proposals
                 logger.warn("I do not have a proposal from {}. This should not happen in deliverResult()", member);
                 creationListener.onPolynomialCreationFailure(creationContext, consensusId, null, null);
                 return;
@@ -561,6 +572,7 @@ public abstract class PolynomialCreator {
     private byte[] serialize(PolynomialMessage message) {
         try (ByteArrayOutputStream bos = new ByteArrayOutputStream();
              ObjectOutput out = new ObjectOutputStream(bos)) {
+            out.writeUTF(confidentialityScheme.getConfidentialSchemeId());
             if (message instanceof ProposalMessage)
                 confidentialityScheme.serializeProposalMessage((ProposalMessage) message, out);
             else if (message instanceof MissingProposalsMessage)

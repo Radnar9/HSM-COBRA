@@ -24,20 +24,20 @@ import java.util.concurrent.locks.ReentrantLock;
 
 public class DistributedPolynomial implements Runnable, InterServerMessageListener {
     private final Logger logger = LoggerFactory.getLogger("polynomial_generation");
-    private static final byte[] SEED = "confidential".getBytes();
 
     private final InterServersCommunication serversCommunication;
     private final SecureRandom rndGenerator;
     private final BigInteger field;
     private final ServerConfidentialityScheme confidentialityScheme;
     private final ConcurrentHashMap<Integer, PolynomialCreator> polynomialCreators;
-    private final Map<PolynomialCreationReason, PolynomialCreationListener> listeners;//TODO should I change to concurrentMap?
+    private final Map<PolynomialCreationReason, PolynomialCreationListener> listeners;
     private final int processId;
     private final BlockingQueue<InterServerMessageHolder> pendingMessages;
     private final Lock entryLock;
     private final ExecutorService jobsProcessor;
     private final ExecutorService proposalSetVerifierExecutor;
     private final BigInteger[][] vandermondeMatrix;
+    private final Map<String, ServerConfidentialityScheme> confidentialitySchemes;
 
     public DistributedPolynomial(ServerViewController svController, InterServersCommunication serversCommunication,
                                  ServerConfidentialityScheme confidentialityScheme) {
@@ -84,6 +84,16 @@ public class DistributedPolynomial implements Runnable, InterServerMessageListen
         jobsProcessor = Executors.newFixedThreadPool(Configuration.getInstance().getShareProcessingThreads());
         proposalSetVerifierExecutor = Executors.newFixedThreadPool(Configuration.getInstance()
                 .getShareProcessingThreads());
+
+        confidentialitySchemes = new HashMap<>();
+    }
+
+    public void registerConfidentialityScheme(String id, ServerConfidentialityScheme serverConfidentialityScheme) {
+        confidentialitySchemes.put(id, serverConfidentialityScheme);
+    }
+
+    public void registerConfidentialitySchemes(Map<String, ServerConfidentialityScheme> confidentialitySchemesMap) {
+        confidentialitySchemes.putAll(confidentialitySchemesMap);
     }
 
     public int getProcessId() {
@@ -124,8 +134,47 @@ public class DistributedPolynomial implements Runnable, InterServerMessageListen
         }
     }
 
+    public void createNewPolynomial(PolynomialCreationContext context, String confidentialitySchemeId) {
+        try {
+            entryLock.lock();
+            PolynomialCreator polynomialCreator = polynomialCreators.get(context.getId());
+            if (polynomialCreator != null && !polynomialCreator.getCreationContext().getReason().equals(context.getReason())) {
+                logger.debug("Polynomial with id {} is already being created for different reason", context.getId());
+                return;
+            }
+
+            if (polynomialCreator == null) {
+                polynomialCreator = createNewPolynomialCreator(context, confidentialitySchemeId);
+                if (polynomialCreator == null){
+                    return;
+                }
+            }
+            polynomialCreator.sendNewPolynomialCreationRequest();
+        } finally {
+            entryLock.unlock();
+        }
+    }
+
     public BigInteger[][] getVandermondeMatrix() {
         return vandermondeMatrix;
+    }
+
+    private PolynomialCreator createNewPolynomialCreator(PolynomialCreationContext context, String confidentialitySchemeId) {
+        PolynomialCreator polynomialCreator = PolynomialCreatorFactory.getInstance().getNewCreatorFor(
+                context,
+                processId,
+                rndGenerator,
+                confidentialitySchemes.get(confidentialitySchemeId),
+                serversCommunication,
+                listeners.get(context.getReason()),
+                this
+        );
+
+        if (polynomialCreator == null)
+            return null;
+
+        polynomialCreators.put(context.getId(), polynomialCreator);
+        return polynomialCreator;
     }
 
     private PolynomialCreator createNewPolynomialCreator(PolynomialCreationContext context) {
@@ -184,20 +233,23 @@ public class DistributedPolynomial implements Runnable, InterServerMessageListen
                             logger.warn("Unknown polynomial message type {}", message.getType());
                             continue;
                     }
+                    // Retrieve confidentiality scheme id from the polynomial message
+                    String confidentialSchemeId = polynomialMessage.readConfidentialitySchemeId(in);
+                    ServerConfidentialityScheme currentConfidentialScheme = confidentialitySchemes.get(confidentialSchemeId);
+
+                    // Set or use the retrieved confidentiality scheme to deserialize the remaining message
                     if (message.getType() == InterServersMessageType.POLYNOMIAL_PROPOSAL) {
-                        polynomialMessage = confidentialityScheme.deserializeProposalMessage(in);
+                        polynomialMessage = currentConfidentialScheme.deserializeProposalMessage(in);
                     } else if (message.getType() == InterServersMessageType.POLYNOMIAL_MISSING_PROPOSALS) {
-                        polynomialMessage = confidentialityScheme.deserializeMissingProposalMessage(in);
+                        polynomialMessage = currentConfidentialScheme.deserializeMissingProposalMessage(in);
                     } else {
                         polynomialMessage.readExternal(in);
                     }
                     PolynomialCreator polynomialCreator = polynomialCreators.get(polynomialMessage.getId());
-                    if (polynomialCreator == null && polynomialMessage instanceof NewPolynomialMessage) {
-                        NewPolynomialMessage newPolynomialMessage = (NewPolynomialMessage) polynomialMessage;
+                    if (polynomialCreator == null && polynomialMessage instanceof NewPolynomialMessage newPolynomialMessage) {
                         logger.debug("There is no active polynomial creation with id {}", newPolynomialMessage.getId());
-                        logger.debug("Creating new polynomial creator for id {} and reason {}", newPolynomialMessage.getId(),
-                                newPolynomialMessage.getContext().getReason());
-                        polynomialCreator = createNewPolynomialCreator(newPolynomialMessage.getContext());
+                        logger.debug("Creating new polynomial creator for id {} and reason {}", newPolynomialMessage.getId(), newPolynomialMessage.getContext().getReason());
+                        polynomialCreator = createNewPolynomialCreator(newPolynomialMessage.getContext(), confidentialSchemeId);
                     }
                     if (polynomialCreator == null) {
                         logger.debug("There is no active polynomial creation with id {}", polynomialMessage.getId());
@@ -207,8 +259,7 @@ public class DistributedPolynomial implements Runnable, InterServerMessageListen
                     PolynomialCreator finalPolynomialCreator = polynomialCreator;
                     PolynomialMessage finalPolynomialMessage = polynomialMessage;
                     int cid = message.getMessageContext() == null ? -1 : message.getMessageContext().getConsensusId();
-                    executorService.execute(() -> finalPolynomialCreator.messageReceived(message.getType(),
-                            finalPolynomialMessage, cid));
+                    executorService.execute(() -> finalPolynomialCreator.messageReceived(message.getType(), finalPolynomialMessage, cid));
                 } catch (IOException | ClassNotFoundException e) {
                     logger.error("Failed to deserialize polynomial message of type {}", message.getType(), e);
                 }
@@ -223,8 +274,7 @@ public class DistributedPolynomial implements Runnable, InterServerMessageListen
     }
 
     public boolean isValidProposalSet(ProposalSetMessage message) {
-        logger.debug("Received proposal set from {} for polynomial creation id {}", message.getSender(),
-                message.getId());
+        logger.debug("Received proposal set from {} for polynomial creation id {}", message.getSender(), message.getId());
         PolynomialCreator polynomialCreator = polynomialCreators.get(message.getId());
         if (polynomialCreator == null) {
             logger.error("There is no active polynomial creation with id {}", message.getId());
@@ -232,11 +282,9 @@ public class DistributedPolynomial implements Runnable, InterServerMessageListen
         }
         boolean isValid = polynomialCreator.isValidProposalSet(message);
         if (isValid) {
-            logger.debug("Accepting proposal set from {} for polynomial creation id {}", message.getSender(),
-                    message.getId());
+            logger.debug("Accepting proposal set from {} for polynomial creation id {}", message.getSender(), message.getId());
         } else {
-            logger.debug("Rejecting proposal set from {} for polynomial creation id {}", message.getSender(),
-                    message.getId());
+            logger.debug("Rejecting proposal set from {} for polynomial creation id {}", message.getSender(), message.getId());
         }
         return isValid;
     }

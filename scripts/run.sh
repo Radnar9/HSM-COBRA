@@ -11,10 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-
 C_PROJECT=$(pwd)/pairing
 RELIC=$(pwd)/pairing/relic/relic-target
-
 export LD_LIBRARY_PATH=$RELIC/lib:$LD_LIBRARY_PATH
-
 java -Djava.security.properties="./config/java.security" -Dlogback.configurationFile="./config/logback.xml" -Djava.library.path=$C_PROJECT/lib -cp "lib/*" $@

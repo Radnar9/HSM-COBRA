@@ -9,8 +9,8 @@ public class NewPolynomialMessage extends PolynomialMessage {
 
     public NewPolynomialMessage() {}
 
-    public NewPolynomialMessage(int sender, PolynomialCreationContext context) {
-        super(context.getId(), sender);
+    public NewPolynomialMessage(int sender, PolynomialCreationContext context, String confidentialitySchemeId) {
+        super(context.getId(), sender, confidentialitySchemeId);
         this.context = context;
     }
 

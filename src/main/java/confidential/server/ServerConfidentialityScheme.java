@@ -2,6 +2,7 @@ package confidential.server;
 
 import bftsmart.reconfiguration.views.View;
 import confidential.CobraConfidentialityScheme;
+import confidential.EllipticCurveParameters;
 import confidential.encrypted.EncryptedPublishedShares;
 import vss.commitment.Commitment;
 import vss.commitment.CommitmentScheme;
@@ -18,6 +19,12 @@ public class ServerConfidentialityScheme extends CobraConfidentialityScheme {
 
     public ServerConfidentialityScheme(int processId, View view) throws SecretSharingException {
         super(view);
+        me = getShareholder(processId);
+        this.processId = processId;
+    }
+
+    public ServerConfidentialityScheme(int processId, View view, EllipticCurveParameters ellipticCurveParameters) throws SecretSharingException {
+        super(view, ellipticCurveParameters);
         me = getShareholder(processId);
         this.processId = processId;
     }

@@ -32,8 +32,8 @@ public abstract class ServersResponseHandler implements Comparator<ServiceConten
 	protected final Logger logger = LoggerFactory.getLogger("confidential");
 	protected CommitmentScheme commitmentScheme;
 	protected ClientConfidentialityScheme confidentialityScheme;
-	private final Map<ServiceContent, ConfidentialMessage> responses;
-	private final Map<ConfidentialMessage, Integer> responseHashes;
+	protected final Map<ServiceContent, ConfidentialMessage> responses;
+	protected final Map<ConfidentialMessage, Integer> responseHashes;
 
 	public ServersResponseHandler() {
 		this.responses = new HashMap<>();

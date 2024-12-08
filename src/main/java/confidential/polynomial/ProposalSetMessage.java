@@ -16,6 +16,12 @@ public class ProposalSetMessage extends PolynomialMessage {
         this.receivedProposals = receivedProposals;
     }
 
+    public ProposalSetMessage(int id, int sender, String confidentialitySchemeId, int[] receivedNodes, byte[][] receivedProposals) {
+        super(id, sender, confidentialitySchemeId);
+        this.receivedNodes = receivedNodes;
+        this.receivedProposals = receivedProposals;
+    }
+
     public int[] getReceivedNodes() {
         return receivedNodes;
     }

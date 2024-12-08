@@ -197,7 +197,13 @@ public class DistributedPolynomialManager implements PolynomialCreationListener 
         return internalId;
     }
 
-    public int createRandomKeyPolynomial(int f, int[] members) {
+    /**
+     * Sets up all the required objects to start generating a new random key.
+     * @param f maximum number of faulty replicas
+     * @param members number of total replicas
+     * @return the unique internal identifier associated to the creation of the random key polynomial.
+     */
+    public int createRandomKeyPolynomial(int f, int[] members, String confidentialitySchemeId) {
         if (randomKeyPolynomialListener == null)
             throw new IllegalStateException("RandomKeyPolynomialListener is not set in DistributedPolynomialManager");
         lock.lock();
@@ -220,7 +226,7 @@ public class DistributedPolynomialManager implements PolynomialCreationListener 
                 PolynomialCreationReason.RANDOM_KEY,
                 context
         );
-        distributedPolynomial.createNewPolynomial(creationContext);
+        distributedPolynomial.createNewPolynomial(creationContext, confidentialitySchemeId);
 
         RandomPolynomialContext randomPolynomialContext = new RandomPolynomialContext(
                 internalId,

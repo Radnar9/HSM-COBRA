@@ -81,6 +81,14 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
 		this.isCombinePrivateAndCommonData = Configuration.getInstance().isSendAllSharesTogether();
 	}
 
+	public void registerConfidentialityScheme(String id, ServerConfidentialityScheme serverConfidentialityScheme) {
+		distributedPolynomial.registerConfidentialityScheme(id, serverConfidentialityScheme);
+	}
+
+	public void registerConfidentialitySchemes(Map<String, ServerConfidentialityScheme> confidentialitySchemes) {
+		distributedPolynomial.registerConfidentialitySchemes(confidentialitySchemes);
+	}
+
 	@Override
 	public void setReplicaContext(ReplicaContext replicaContext) {
 		logger.debug("setting replica context");
@@ -127,23 +135,20 @@ public final class ConfidentialRecoverable implements SingleExecutable, Recovera
 		Metadata metadata = Metadata.getMessageType(request.getMetadata());
 		logger.debug("Metadata: {}", metadata);
 		if (metadata == Metadata.POLYNOMIAL_PROPOSAL_SET) {
-			Request req = preprocessRequest(request.getCommonContent(), request.getReplicaSpecificContent(),
-					request.getSender());
+			Request req = preprocessRequest(request.getCommonContent(), request.getReplicaSpecificContent(), request.getSender());
 			if (req == null || req.getType() != MessageType.APPLICATION) {
 				logger.error("Unknown request type to verify");
 				return false;
 			}
-			byte[] m =
-					Arrays.copyOfRange(req.getPlainData(), 1,
-							req.getPlainData().length);
+			byte[] m = Arrays.copyOfRange(req.getPlainData(), 1, req.getPlainData().length);
 			try (ByteArrayInputStream bis = new ByteArrayInputStream(m);
 				 ObjectInput in = new ObjectInputStream(bis)) {
 				ProposalSetMessage proposalSetMessage = new ProposalSetMessage();
+				proposalSetMessage.readConfidentialitySchemeId(in);
 				proposalSetMessage.readExternal(in);
 				return distributedPolynomial.isValidProposalSet(proposalSetMessage);
 			} catch (IOException | ClassNotFoundException e) {
-				logger.error("Failed to deserialize polynomial message of type " +
-						"{}", Metadata.POLYNOMIAL_PROPOSAL_SET, e);
+				logger.error("Failed to deserialize polynomial message of type {}", Metadata.POLYNOMIAL_PROPOSAL_SET, e);
 				return false;
 			}
 		} else if (metadata == Metadata.VERIFY) {

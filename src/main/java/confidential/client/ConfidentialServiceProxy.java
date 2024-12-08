@@ -70,6 +70,10 @@ public class ConfidentialServiceProxy {
 		return composeResponse(response);
 	}
 
+    public ServiceResponse invokeOrderedOperation(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
+        return invokeOrdered(plainData, Mode.LARGE_SECRET, confidentialData);
+    }
+
 	public Response invokeOrderedHashed(byte[] plainData, byte[]... confidentialData) throws SecretSharingException {
 		ServiceResponse response = invokeOrderedHashed(plainData, Mode.LARGE_SECRET, confidentialData);
 		return composeResponse(response);

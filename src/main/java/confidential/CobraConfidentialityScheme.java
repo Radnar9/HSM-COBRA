@@ -41,10 +41,12 @@ public abstract class CobraConfidentialityScheme {
     private final Cipher cipher;
     private final Lock cipherLock;
     private final boolean isLinearCommitmentScheme;
+    private final boolean useTLSEncryption;
     protected KeysManager keysManager;
     protected int threshold;
-    private final EllipticCurveCommitmentScheme ellipticCurveCommitmentScheme;
-    private final BigInteger ellipticCurveField;
+    private final Map<String, EllipticCurveCommitmentScheme> ellipticCurveCommitmentSchemesMap;
+    private EllipticCurveCommitmentScheme currentEllipticCurveCommitmentScheme;
+    private final String confidentialSchemeId;
 
     public CobraConfidentialityScheme(View view) throws SecretSharingException {
         cipherLock = new ReentrantLock(true);
@@ -80,15 +82,95 @@ public abstract class CobraConfidentialityScheme {
         vss = new VSSFacade(properties, shareholders);
         keysManager = new KeysManager();
         isLinearCommitmentScheme = Configuration.getInstance().getVssScheme().equals("1");
+        useTLSEncryption = configuration.useTLSEncryption();
 
+        ellipticCurveCommitmentSchemesMap = new HashMap<>(EllipticCurveConstants.CURVES_COUNTER);
 
-        BigInteger prime = new BigInteger("FFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFF", 16);
-        BigInteger order = new BigInteger("FFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551", 16);
-        BigInteger a = new BigInteger("FFFFFFFF00000001000000000000000000000000FFFFFFFFFFFFFFFFFFFFFFFC", 16);
-        BigInteger b = new BigInteger("5AC635D8AA3A93E7B3EBBD55769886BC651D06B0CC53B0F63BCE3C3E27D2604B", 16);
-        byte[] compressedGenerator = new BigInteger("036B17D1F2E12C4247F8BCE6E563A440F277037D812DEB33A0F4A13945D898C296", 16).toByteArray();
-        ellipticCurveField = order;
-        ellipticCurveCommitmentScheme = new EllipticCurveCommitmentScheme(prime, order, a, b, compressedGenerator);
+        registerEllipticCurve(EllipticCurveConstants.secp256r1.PARAMETERS);
+        setCurrentEllipticCurve(EllipticCurveConstants.secp256r1.NAME);
+
+        confidentialSchemeId = EllipticCurveConstants.secp256r1.NAME;
+    }
+
+    public CobraConfidentialityScheme(View view, EllipticCurveParameters ellipticCurveParameters) throws SecretSharingException {
+        cipherLock = new ReentrantLock(true);
+        int[] processes = view.getProcesses();
+        serverToShareholder = new HashMap<>(processes.length);
+        shareholderToServer = new HashMap<>(processes.length);
+        BigInteger[] shareholders = new BigInteger[processes.length];
+        for (int i = 0; i < processes.length; i++) {
+            int process = processes[i];
+            BigInteger shareholder = BigInteger.valueOf(process + 1);
+            serverToShareholder.put(process, shareholder);
+            shareholderToServer.put(shareholder, process);
+            shareholders[i] = shareholder;
+        }
+
+        threshold = view.getF();
+        Configuration configuration = Configuration.getInstance();
+
+        Properties properties = new Properties();
+        properties.put(Constants.TAG_THRESHOLD, String.valueOf(threshold));
+        properties.put(Constants.TAG_DATA_ENCRYPTION_ALGORITHM, configuration.getDataEncryptionAlgorithm());
+        properties.put(Constants.TAG_COMMITMENT_SCHEME, configuration.getVssScheme());
+        if (configuration.getVssScheme().equals("1")) {
+            properties.put(Constants.TAG_PRIME_FIELD, configuration.getPrimeField());
+            properties.put(Constants.TAG_SUB_FIELD, configuration.getSubPrimeField());
+            properties.put(Constants.TAG_GENERATOR, configuration.getGenerator());
+        }
+        try {
+            cipher = Cipher.getInstance(configuration.getShareEncryptionAlgorithm());
+        } catch (NoSuchAlgorithmException | NoSuchPaddingException e) {
+            throw new SecretSharingException("Failed to initialize the cipher");
+        }
+        vss = new VSSFacade(properties, shareholders);
+        keysManager = new KeysManager();
+        isLinearCommitmentScheme = Configuration.getInstance().getVssScheme().equals("1");
+        useTLSEncryption = configuration.useTLSEncryption();
+
+        ellipticCurveCommitmentSchemesMap = new HashMap<>(EllipticCurveConstants.CURVES_COUNTER);
+
+        registerEllipticCurve(ellipticCurveParameters);
+        setCurrentEllipticCurve(ellipticCurveParameters.curveName());
+
+        confidentialSchemeId = ellipticCurveParameters.curveName();
+    }
+
+    public String getConfidentialSchemeId() {
+        return confidentialSchemeId;
+    }
+
+    public boolean setCurrentEllipticCurve(String curveName) {
+        EllipticCurveCommitmentScheme nextEllipticCurve = ellipticCurveCommitmentSchemesMap.get(curveName);
+        if (nextEllipticCurve == null) return false;
+        if (nextEllipticCurve == currentEllipticCurveCommitmentScheme) return true;
+        currentEllipticCurveCommitmentScheme = nextEllipticCurve;
+        return true;
+    }
+
+    public void registerEllipticCurve(EllipticCurveParameters ecParams) {
+        try {
+            EllipticCurveCommitmentScheme nextEllipticCurve = new EllipticCurveCommitmentScheme(
+                    ecParams.prime(),
+                    ecParams.order(),
+                    ecParams.a(),
+                    ecParams.b(),
+                    ecParams.x(),
+                    ecParams.y(),
+                    ecParams.cofactor()
+            );
+            ellipticCurveCommitmentSchemesMap.put(ecParams.curveName(), nextEllipticCurve);
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+    }
+
+    public EllipticCurveCommitmentScheme getCurrentEllipticCurveCommitmentScheme() {
+        return currentEllipticCurveCommitmentScheme;
+    }
+
+    public boolean useTLSEncryption() {
+        return useTLSEncryption;
     }
 
     public BigInteger getField() {
@@ -193,20 +275,20 @@ public abstract class CobraConfidentialityScheme {
         }
     }
 
-    public BigInteger getEllipticCurveField() {
-        return ellipticCurveField;
+    public BigInteger getCurrentEllipticCurveField() {
+        return currentEllipticCurveCommitmentScheme.getOrder();
     }
 
     public Commitment generateEllipticCurveCommitment(Polynomial polynomial) {
-        return ellipticCurveCommitmentScheme.generateCommitments(polynomial);
+        return currentEllipticCurveCommitmentScheme.generateCommitments(polynomial);
     }
 
     public boolean checkEllipticCurveCommitment(Share share, Commitment commitment) {
-        return ellipticCurveCommitmentScheme.checkValidity(share, commitment);
+        return currentEllipticCurveCommitmentScheme.checkValidity(share, commitment);
     }
 
     public Commitment sumEllipticCurveCommitments(Commitment... commitments) throws SecretSharingException {
-        return ellipticCurveCommitmentScheme.sumCommitments(commitments);
+        return currentEllipticCurveCommitmentScheme.sumCommitments(commitments);
     }
 
     public void serializeProposalMessage(ProposalMessage message, ObjectOutput out) throws IOException {
@@ -255,7 +337,7 @@ public abstract class CobraConfidentialityScheme {
             signature = new byte[len];
             in.readFully(signature);
         }
-        ProposalMessage proposalMessage = new ProposalMessage(id, sender, proposals);
+        ProposalMessage proposalMessage = new ProposalMessage(id, sender, confidentialSchemeId, proposals);
         proposalMessage.setSignature(signature);
         return proposalMessage;
     }
@@ -264,7 +346,7 @@ public abstract class CobraConfidentialityScheme {
         int id = in.readInt();
         int sender = in.readInt();
         ProposalMessage proposal = deserializeProposalMessage(in);
-        return new MissingProposalsMessage(id, sender, proposal);
+        return new MissingProposalsMessage(id, sender, confidentialSchemeId, proposal);
     }
 
     private void writeProposal(Proposal proposal, ObjectOutput out) throws IOException {
@@ -284,7 +366,7 @@ public abstract class CobraConfidentialityScheme {
         if (commitments != null) {
             out.writeBoolean(commitments instanceof EllipticCurveCommitment);
             if (commitments instanceof EllipticCurveCommitment)
-                ellipticCurveCommitmentScheme.writeCommitment(commitments, out);
+                currentEllipticCurveCommitmentScheme.writeCommitment(commitments, out);
             else
                 CommitmentUtils.getInstance().writeCommitment(commitments, out);
         }
@@ -306,7 +388,7 @@ public abstract class CobraConfidentialityScheme {
         Commitment commitment = null;
         if (in.readBoolean()) {
             if (in.readBoolean()) {
-                commitment = ellipticCurveCommitmentScheme.readCommitment(in);
+                commitment = currentEllipticCurveCommitmentScheme.readCommitment(in);
             } else {
                 commitment = CommitmentUtils.getInstance().readCommitment(in);
             }

@@ -9,8 +9,8 @@ public class MissingProposalRequestMessage extends PolynomialMessage {
 
     public MissingProposalRequestMessage() {}
 
-    public MissingProposalRequestMessage(int id, int sender, byte[] missingProposals) {
-        super(id, sender);
+    public MissingProposalRequestMessage(int id, int sender, String confidentialitySchemeId, byte[] missingProposals) {
+        super(id, sender, confidentialitySchemeId);
         this.missingProposals = missingProposals;
     }
 

@@ -24,11 +24,25 @@ public class EllipticCurveCommitmentScheme implements CommitmentScheme {
 	private final ECCurve curve;
 	private final ECPoint generator;
 
-	public EllipticCurveCommitmentScheme(BigInteger prime, BigInteger order, BigInteger a, BigInteger b,
-										 byte[] compressedGenerator) {
+	public EllipticCurveCommitmentScheme(BigInteger prime, BigInteger order, BigInteger a, BigInteger b, byte[] compressedGenerator) {
 		BigInteger cofactor = prime.divide(order);
 		this.curve = new ECCurve.Fp(prime, a, b, order, cofactor);
 		this.generator = curve.decodePoint(compressedGenerator);
+	}
+
+	public EllipticCurveCommitmentScheme(BigInteger prime, BigInteger order, BigInteger a, BigInteger b, BigInteger x, BigInteger y) {
+		BigInteger cofactor = prime.divide(order);
+		this.curve = new ECCurve.Fp(prime, a, b, order, cofactor);
+		this.generator = curve.createPoint(x, y);
+	}
+
+	public EllipticCurveCommitmentScheme(BigInteger prime, BigInteger order, BigInteger a, BigInteger b, BigInteger x, BigInteger y, BigInteger hCofactor) {
+		this.curve = new ECCurve.Fp(prime, a, b, order, hCofactor);
+		this.generator = curve.createPoint(x, y);
+	}
+
+	public BigInteger getOrder() {
+		return curve.getOrder();
 	}
 
 	public byte[] encodePoint(ECPoint point) {

@@ -16,6 +16,11 @@ public class ProposalMessage extends PolynomialMessage {
         this.proposals = proposals;
     }
 
+    public ProposalMessage(int id, int sender, String confidentialitySchemeId, Proposal... proposals) {
+        super(id, sender, confidentialitySchemeId);
+        this.proposals = proposals;
+    }
+
     public Proposal[] getProposals() {
         return proposals;
     }

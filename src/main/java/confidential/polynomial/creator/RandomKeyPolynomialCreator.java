@@ -37,7 +37,7 @@ public class RandomKeyPolynomialCreator extends PolynomialCreator {
 
 	@Override
 	ProposalMessage computeProposalMessage() {
-		BigInteger field = confidentialityScheme.getEllipticCurveField();
+		BigInteger field = confidentialityScheme.getCurrentEllipticCurveField();
 		BigInteger privateKey = getRandomNumber(field);
 
 		Proposal[] proposals = new Proposal[creationContext.getContexts().length];
@@ -68,6 +68,7 @@ public class RandomKeyPolynomialCreator extends PolynomialCreator {
 		return new ProposalMessage(
 				creationContext.getId(),
 				processId,
+				confidentialityScheme.getConfidentialSchemeId(),
 				proposals
 		);
 	}
@@ -149,12 +150,13 @@ public class RandomKeyPolynomialCreator extends PolynomialCreator {
 				index++;
 
 			}
-			creationListener.onPolynomialCreationFailure(creationContext, consensusId, invalidProposalsArray, invalidPoints);			return;
+			creationListener.onPolynomialCreationFailure(creationContext, consensusId, invalidProposalsArray, invalidPoints);
+			return;
 		}
 
 		for (int member : proposalSet.getReceivedNodes()) {
 			BigInteger[] points = decryptedPoints.get(member);
-			if (points == null) { //if this replica did not received some proposals
+			if (points == null) { //if this replica did not receive some proposals
 				logger.warn("I do not have a proposal from {}. This should not happen in deliverResult()", member);
 				creationListener.onPolynomialCreationFailure(creationContext, consensusId, null, null);
 				return;
