@@ -16,9 +16,9 @@ The COBRA library is primarily implemented in Java and currently uses Gradle to 
 deploy compiled code for local testing. The current COBRA library was tested using Java 17.
 
 ## Compilation and Packaging
-First, clone this repository. Now inside the `thesis-hsm-cobra` folder, follow the following instructions:
+First, clone this repository. Now inside the root folder, follow the following instructions:
 
-* To compile and package to locally test the library: Execute `./gradlew simpleLocalDeploy`. The execution of Gradle 
+* Compile and package to locally test the library: Execute `./gradlew simpleLocalDeploy`. The execution of Gradle 
 task `simpleLocalDeploy` will create the folder `build/local` containing all the necessary files to start testing.
 
 ## Usage
